@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useMemo, useLayoutEffect } from 'react';
+import { useEffect, useRef, useState, useMemo, useLayoutEffect, useCallback } from 'react';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import { createAvatar } from '@dicebear/core';
 import { glass } from '@dicebear/collection';
@@ -2086,7 +2086,7 @@ export default function HomePage() {
       } else {
         next[code] = data;
       }
-      localStorage.setItem('holdings', JSON.stringify(next));
+      storageHelper.setItem('holdings', JSON.stringify(next));
       return next;
     });
     setHoldingModal({ open: false, fund: null });
@@ -2208,64 +2208,59 @@ export default function HomePage() {
     userIdRef.current = user?.id || null;
   }, [user]);
 
+  const scheduleSync = useCallback(() => {
+    if (!userIdRef.current) return;
+    if (skipSyncRef.current) return;
+    if (syncDebounceRef.current) clearTimeout(syncDebounceRef.current);
+    syncDebounceRef.current = setTimeout(() => {
+      const payload = collectLocalPayload();
+      const next = getComparablePayload(payload);
+      if (next === lastSyncedRef.current) return;
+      lastSyncedRef.current = next;
+      syncUserConfig(userIdRef.current, false);
+    }, 2000);
+  }, []);
+
+  const storageHelper = useMemo(() => {
+    const keys = new Set(['funds', 'favorites', 'groups', 'collapsedCodes', 'refreshMs', 'holdings']);
+    const triggerSync = (key) => {
+      if (keys.has(key)) {
+        if (!skipSyncRef.current) {
+          window.localStorage.setItem('localUpdatedAt', new Date().toISOString());
+        }
+        scheduleSync();
+      }
+    };
+    return {
+      setItem: (key, value) => {
+        window.localStorage.setItem(key, value);
+        triggerSync(key);
+      },
+      removeItem: (key) => {
+        window.localStorage.removeItem(key);
+        triggerSync(key);
+      },
+      clear: () => {
+        window.localStorage.clear();
+        if (!skipSyncRef.current) {
+          window.localStorage.setItem('localUpdatedAt', new Date().toISOString());
+        }
+        scheduleSync();
+      }
+    };
+  }, [scheduleSync]);
+
   useEffect(() => {
     const keys = new Set(['funds', 'favorites', 'groups', 'collapsedCodes', 'refreshMs', 'holdings']);
-    const scheduleSync = () => {
-      if (!userIdRef.current) return;
-      if (skipSyncRef.current) return;
-      if (syncDebounceRef.current) clearTimeout(syncDebounceRef.current);
-      syncDebounceRef.current = setTimeout(() => {
-        const payload = collectLocalPayload();
-        const next = getComparablePayload(payload);
-        if (next === lastSyncedRef.current) return;
-        lastSyncedRef.current = next;
-        syncUserConfig(userIdRef.current, false);
-      }, 2000);
-    };
-
-    const originalSetItem = localStorage.setItem.bind(localStorage);
-    const originalRemoveItem = localStorage.removeItem.bind(localStorage);
-    const originalClear = localStorage.clear.bind(localStorage);
-
-    localStorage.setItem = (key, value) => {
-      originalSetItem(key, value);
-      if (keys.has(key)) {
-        if (!skipSyncRef.current) {
-          originalSetItem('localUpdatedAt', new Date().toISOString());
-        }
-        scheduleSync();
-      }
-    };
-    localStorage.removeItem = (key) => {
-      originalRemoveItem(key);
-      if (keys.has(key)) {
-        if (!skipSyncRef.current) {
-          originalSetItem('localUpdatedAt', new Date().toISOString());
-        }
-        scheduleSync();
-      }
-    };
-    localStorage.clear = () => {
-      originalClear();
-      if (!skipSyncRef.current) {
-        originalSetItem('localUpdatedAt', new Date().toISOString());
-      }
-      scheduleSync();
-    };
-
     const onStorage = (e) => {
       if (!e.key || keys.has(e.key)) scheduleSync();
     };
     window.addEventListener('storage', onStorage);
-
     return () => {
-      localStorage.setItem = originalSetItem;
-      localStorage.removeItem = originalRemoveItem;
-      localStorage.clear = originalClear;
       window.removeEventListener('storage', onStorage);
       if (syncDebounceRef.current) clearTimeout(syncDebounceRef.current);
     };
-  }, []);
+  }, [scheduleSync]);
 
   const toggleFavorite = (code) => {
     setFavorites(prev => {
@@ -2275,7 +2270,7 @@ export default function HomePage() {
       } else {
         next.add(code);
       }
-      localStorage.setItem('favorites', JSON.stringify(Array.from(next)));
+      storageHelper.setItem('favorites', JSON.stringify(Array.from(next)));
       if (next.size === 0) setCurrentTab('all');
       return next;
     });
@@ -2290,7 +2285,7 @@ export default function HomePage() {
         next.add(code);
       }
       // 同步到本地存储
-      localStorage.setItem('collapsedCodes', JSON.stringify(Array.from(next)));
+      storageHelper.setItem('collapsedCodes', JSON.stringify(Array.from(next)));
       return next;
     });
   };
@@ -2303,7 +2298,7 @@ export default function HomePage() {
     };
     const next = [...groups, newGroup];
     setGroups(next);
-    localStorage.setItem('groups', JSON.stringify(next));
+    storageHelper.setItem('groups', JSON.stringify(next));
     setCurrentTab(newGroup.id);
     setGroupModalOpen(false);
   };
@@ -2311,13 +2306,13 @@ export default function HomePage() {
   const handleRemoveGroup = (id) => {
     const next = groups.filter(g => g.id !== id);
     setGroups(next);
-    localStorage.setItem('groups', JSON.stringify(next));
+    storageHelper.setItem('groups', JSON.stringify(next));
     if (currentTab === id) setCurrentTab('all');
   };
 
   const handleUpdateGroups = (newGroups) => {
     setGroups(newGroups);
-    localStorage.setItem('groups', JSON.stringify(newGroups));
+    storageHelper.setItem('groups', JSON.stringify(newGroups));
     // 如果当前选中的分组被删除了，切换回“全部”
     if (currentTab !== 'all' && currentTab !== 'fav' && !newGroups.find(g => g.id === currentTab)) {
       setCurrentTab('all');
@@ -2336,7 +2331,7 @@ export default function HomePage() {
       return g;
     });
     setGroups(next);
-    localStorage.setItem('groups', JSON.stringify(next));
+    storageHelper.setItem('groups', JSON.stringify(next));
     setAddFundToGroupOpen(false);
     setSuccessModal({ open: true, message: `成功添加 ${codes.length} 支基金` });
   };
@@ -2352,7 +2347,7 @@ export default function HomePage() {
       return g;
     });
     setGroups(next);
-    localStorage.setItem('groups', JSON.stringify(next));
+    storageHelper.setItem('groups', JSON.stringify(next));
   };
 
   const toggleFundInGroup = (code, groupId) => {
@@ -2367,7 +2362,7 @@ export default function HomePage() {
       return g;
     });
     setGroups(next);
-    localStorage.setItem('groups', JSON.stringify(next));
+    storageHelper.setItem('groups', JSON.stringify(next));
   };
 
   // 按 code 去重，保留第一次出现的项，避免列表重复
@@ -2387,7 +2382,7 @@ export default function HomePage() {
       if (Array.isArray(saved) && saved.length) {
         const deduped = dedupeByCode(saved);
         setFunds(deduped);
-        localStorage.setItem('funds', JSON.stringify(deduped));
+        storageHelper.setItem('funds', JSON.stringify(deduped));
         const codes = Array.from(new Set(deduped.map((f) => f.code)));
         if (codes.length) refreshAll(codes);
       }
@@ -2443,7 +2438,7 @@ export default function HomePage() {
           const storageKeys = Object.keys(localStorage);
           storageKeys.forEach((key) => {
             if (key === 'supabase.auth.token' || (key.startsWith('sb-') && key.endsWith('-auth-token'))) {
-              localStorage.removeItem(key);
+              storageHelper.removeItem(key);
             }
           });
         } catch { }
@@ -2598,7 +2593,7 @@ export default function HomePage() {
         const storageKeys = Object.keys(localStorage);
         storageKeys.forEach((key) => {
           if (key === 'supabase.auth.token' || (key.startsWith('sb-') && key.endsWith('-auth-token'))) {
-            localStorage.removeItem(key);
+            storageHelper.removeItem(key);
           }
         });
       } catch { }
@@ -3034,7 +3029,7 @@ export default function HomePage() {
       if (newFunds.length > 0) {
         const updated = dedupeByCode([...newFunds, ...funds]);
         setFunds(updated);
-        localStorage.setItem('funds', JSON.stringify(updated));
+        storageHelper.setItem('funds', JSON.stringify(updated));
       }
 
       setSelectedFunds([]);
@@ -3082,7 +3077,7 @@ export default function HomePage() {
             }
           });
           const deduped = dedupeByCode(merged);
-          localStorage.setItem('funds', JSON.stringify(deduped));
+          storageHelper.setItem('funds', JSON.stringify(deduped));
           return deduped;
         });
       }
@@ -3144,7 +3139,7 @@ export default function HomePage() {
       } else {
         const next = dedupeByCode([...newFunds, ...funds]);
         setFunds(next);
-        localStorage.setItem('funds', JSON.stringify(next));
+        storageHelper.setItem('funds', JSON.stringify(next));
       }
       setSearchTerm('');
       setSelectedFunds([]);
@@ -3163,7 +3158,7 @@ export default function HomePage() {
   const removeFund = (removeCode) => {
     const next = funds.filter((f) => f.code !== removeCode);
     setFunds(next);
-    localStorage.setItem('funds', JSON.stringify(next));
+    storageHelper.setItem('funds', JSON.stringify(next));
 
     // 同步删除分组中的失效代码
     const nextGroups = groups.map(g => ({
@@ -3171,14 +3166,14 @@ export default function HomePage() {
       codes: g.codes.filter(c => c !== removeCode)
     }));
     setGroups(nextGroups);
-    localStorage.setItem('groups', JSON.stringify(nextGroups));
+    storageHelper.setItem('groups', JSON.stringify(nextGroups));
 
     // 同步删除展开收起状态
     setCollapsedCodes(prev => {
       if (!prev.has(removeCode)) return prev;
       const nextSet = new Set(prev);
       nextSet.delete(removeCode);
-      localStorage.setItem('collapsedCodes', JSON.stringify(Array.from(nextSet)));
+      storageHelper.setItem('collapsedCodes', JSON.stringify(Array.from(nextSet)));
       return nextSet;
     });
 
@@ -3187,7 +3182,7 @@ export default function HomePage() {
       if (!prev.has(removeCode)) return prev;
       const nextSet = new Set(prev);
       nextSet.delete(removeCode);
-      localStorage.setItem('favorites', JSON.stringify(Array.from(nextSet)));
+      storageHelper.setItem('favorites', JSON.stringify(Array.from(nextSet)));
       if (nextSet.size === 0) setCurrentTab('all');
       return nextSet;
     });
@@ -3197,7 +3192,7 @@ export default function HomePage() {
       if (!prev[removeCode]) return prev;
       const next = { ...prev };
       delete next[removeCode];
-      localStorage.setItem('holdings', JSON.stringify(next));
+      storageHelper.setItem('holdings', JSON.stringify(next));
       return next;
     });
   };
@@ -3213,7 +3208,7 @@ export default function HomePage() {
     e?.preventDefault?.();
     const ms = Math.max(10, Number(tempSeconds)) * 1000;
     setRefreshMs(ms);
-    localStorage.setItem('refreshMs', String(ms));
+    storageHelper.setItem('refreshMs', String(ms));
     setSettingsOpen(false);
   };
 
@@ -3309,28 +3304,28 @@ export default function HomePage() {
     skipSyncRef.current = true;
     try {
       if (cloudUpdatedAt) {
-        localStorage.setItem('localUpdatedAt', new Date(cloudUpdatedAt).toISOString());
+        storageHelper.setItem('localUpdatedAt', new Date(cloudUpdatedAt).toISOString());
       }
       const nextFunds = Array.isArray(cloudData.funds) ? dedupeByCode(cloudData.funds) : [];
       setFunds(nextFunds);
-      localStorage.setItem('funds', JSON.stringify(nextFunds));
+      storageHelper.setItem('funds', JSON.stringify(nextFunds));
 
       const nextFavorites = Array.isArray(cloudData.favorites) ? cloudData.favorites : [];
       setFavorites(new Set(nextFavorites));
-      localStorage.setItem('favorites', JSON.stringify(nextFavorites));
+      storageHelper.setItem('favorites', JSON.stringify(nextFavorites));
 
       const nextGroups = Array.isArray(cloudData.groups) ? cloudData.groups : [];
       setGroups(nextGroups);
-      localStorage.setItem('groups', JSON.stringify(nextGroups));
+      storageHelper.setItem('groups', JSON.stringify(nextGroups));
 
       const nextCollapsed = Array.isArray(cloudData.collapsedCodes) ? cloudData.collapsedCodes : [];
       setCollapsedCodes(new Set(nextCollapsed));
-      localStorage.setItem('collapsedCodes', JSON.stringify(nextCollapsed));
+      storageHelper.setItem('collapsedCodes', JSON.stringify(nextCollapsed));
 
       const nextRefreshMs = Number.isFinite(cloudData.refreshMs) && cloudData.refreshMs >= 5000 ? cloudData.refreshMs : 30000;
       setRefreshMs(nextRefreshMs);
       setTempSeconds(Math.round(nextRefreshMs / 1000));
-      localStorage.setItem('refreshMs', String(nextRefreshMs));
+      storageHelper.setItem('refreshMs', String(nextRefreshMs));
 
       if (cloudData.viewMode === 'card' || cloudData.viewMode === 'list') {
         setViewMode(cloudData.viewMode);
@@ -3338,7 +3333,7 @@ export default function HomePage() {
 
       const nextHoldings = cloudData.holdings && typeof cloudData.holdings === 'object' ? cloudData.holdings : {};
       setHoldings(nextHoldings);
-      localStorage.setItem('holdings', JSON.stringify(nextHoldings));
+      storageHelper.setItem('holdings', JSON.stringify(nextHoldings));
 
       if (nextFunds.length) {
         const codes = Array.from(new Set(nextFunds.map((f) => f.code)));
@@ -3416,7 +3411,7 @@ export default function HomePage() {
         throw new Error('同步失败：未写入任何数据，请检查账号状态或重新登录');
       }
       
-      localStorage.setItem('localUpdatedAt', now);
+      storageHelper.setItem('localUpdatedAt', now);
 
       if (showTip) {
         setSuccessModal({ open: true, message: '已同步云端配置' });
@@ -3507,13 +3502,13 @@ export default function HomePage() {
           appendedCodes = newItems.map(f => f.code);
           mergedFunds = [...currentFunds, ...newItems];
           setFunds(mergedFunds);
-          localStorage.setItem('funds', JSON.stringify(mergedFunds));
+          storageHelper.setItem('funds', JSON.stringify(mergedFunds));
         }
 
         if (Array.isArray(data.favorites)) {
           const mergedFav = Array.from(new Set([...currentFavorites, ...data.favorites]));
           setFavorites(new Set(mergedFav));
-          localStorage.setItem('favorites', JSON.stringify(mergedFav));
+          storageHelper.setItem('favorites', JSON.stringify(mergedFav));
         }
 
         if (Array.isArray(data.groups)) {
@@ -3531,19 +3526,19 @@ export default function HomePage() {
             }
           });
           setGroups(mergedGroups);
-          localStorage.setItem('groups', JSON.stringify(mergedGroups));
+          storageHelper.setItem('groups', JSON.stringify(mergedGroups));
         }
 
         if (Array.isArray(data.collapsedCodes)) {
           const mergedCollapsed = Array.from(new Set([...currentCollapsed, ...data.collapsedCodes]));
           setCollapsedCodes(new Set(mergedCollapsed));
-          localStorage.setItem('collapsedCodes', JSON.stringify(mergedCollapsed));
+          storageHelper.setItem('collapsedCodes', JSON.stringify(mergedCollapsed));
         }
 
         if (typeof data.refreshMs === 'number' && data.refreshMs >= 5000) {
           setRefreshMs(data.refreshMs);
           setTempSeconds(Math.round(data.refreshMs / 1000));
-          localStorage.setItem('refreshMs', String(data.refreshMs));
+          storageHelper.setItem('refreshMs', String(data.refreshMs));
         }
         if (data.viewMode === 'card' || data.viewMode === 'list') {
           setViewMode(data.viewMode);
@@ -3552,7 +3547,7 @@ export default function HomePage() {
         if (data.holdings && typeof data.holdings === 'object') {
           const mergedHoldings = { ...JSON.parse(localStorage.getItem('holdings') || '{}'), ...data.holdings };
           setHoldings(mergedHoldings);
-          localStorage.setItem('holdings', JSON.stringify(mergedHoldings));
+          storageHelper.setItem('holdings', JSON.stringify(mergedHoldings));
         }
 
         // 导入成功后，仅刷新新追加的基金
