@@ -345,7 +345,7 @@ function DatePicker({ value, onChange }) {
 }
 
 function DonateTabs() {
-  const [method, setMethod] = useState('alipay'); // alipay, wechat
+  const [method, setMethod] = useState('wechat'); // alipay, wechat
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
@@ -1625,7 +1625,7 @@ function CountUp({ value, prefix = '', suffix = '', decimals = 2, className = ''
 
     const start = previousValue.current;
     const end = value;
-    const duration = 1000; // 1秒动画
+    const duration = 600; // 0.6秒动画
     const startTime = performance.now();
 
     const animate = (currentTime) => {
@@ -1858,6 +1858,7 @@ export default function HomePage() {
   const [hasUpdate, setHasUpdate] = useState(false);
   const [latestVersion, setLatestVersion] = useState('');
   const [updateContent, setUpdateContent] = useState('');
+  const [isSyncing, setIsSyncing] = useState(false);
 
   useEffect(() => {
     const checkUpdate = async () => {
@@ -3395,6 +3396,7 @@ export default function HomePage() {
       return;
     }
     try {
+      setIsSyncing(true);
       const payload = collectLocalPayload();
       const now = new Date().toISOString();
       const { data: upsertData, error: updateError } = await supabase
@@ -3422,6 +3424,8 @@ export default function HomePage() {
     } catch (e) {
       console.error('同步云端配置异常', e);
       showToast(`同步云端配置异常:${e}`, 'error');
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -3643,6 +3647,35 @@ export default function HomePage() {
             <path d="M5 14c2-4 7-6 14-5" stroke="var(--primary)" strokeWidth="2" />
           </svg>
           <span>基估宝</span>
+          <AnimatePresence>
+            {isSyncing && (
+              <motion.div
+                key="sync-icon"
+                initial={{ opacity: 0, width: 0, marginLeft: 0 }}
+                animate={{ opacity: 1, width: 'auto', marginLeft: 8 }}
+                exit={{ opacity: 0, width: 0, marginLeft: 0 }}
+                style={{ display: 'flex', alignItems: 'center', overflow: 'hidden' }}
+                title="正在同步到云端..."
+              >
+                <motion.svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  animate={{ opacity: [0.5, 1, 0.5] }}
+                  transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
+                >
+                  <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" stroke="var(--primary)" />
+                  <path d="M12 12v9" stroke="var(--accent)" />
+                  <path d="m16 16-4-4-4 4" stroke="var(--accent)" />
+                </motion.svg>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
         <div className="actions">
           {hasUpdate && (
