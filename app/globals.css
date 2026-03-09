@@ -1695,6 +1695,11 @@ input[type="number"] {
     padding-left: 12px;
   }
 
+  /* 基金名称表头排序按钮在排序模式下的高亮 */
+  .mobile-fund-table .mobile-fund-table-header .icon-button.active {
+    color: var(--primary);
+  }
+
   .mobile-fund-table .table-row .name-cell .name-cell-content {
     min-height: 100%;
   }
