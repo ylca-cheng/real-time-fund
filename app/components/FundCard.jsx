@@ -227,25 +227,25 @@ export default function FundCard({
                 display: 'flex',
                 alignItems: 'center',
                 gap: 4,
-                cursor: layoutMode === 'drawer' ? 'default' : 'pointer',
+                cursor: 'pointer',
               }}
-              onClick={() => layoutMode !== 'drawer' && onHoldingClick?.(f)}
+              onClick={() => onHoldingClick?.(f)}
             >
-              未设置  {layoutMode !== 'drawer' && <SettingsIcon width="12" height="12" />}
+              未设置  <SettingsIcon width="12" height="12" />
             </div>
           </div>
         ) : (
           <>
             <div
               className="stat"
-              style={{ cursor: layoutMode === 'drawer' ? 'default' : 'pointer', flexDirection: 'column', gap: 4 }}
-              onClick={() => layoutMode !== 'drawer' && onActionClick?.(f)}
+              style={{ cursor: 'pointer', flexDirection: 'column', gap: 4 }}
+              onClick={() => onActionClick?.(f)}
             >
               <span
                 className="label"
                 style={{ display: 'flex', alignItems: 'center', gap: 4 }}
               >
-                持仓金额 {layoutMode !== 'drawer' && <SettingsIcon width="12" height="12" style={{ opacity: 0.7 }} />}
+                持仓金额 <SettingsIcon width="12" height="12" style={{ opacity: 0.7 }} />
               </span>
               <span className="value">
                 {masked ? '******' : `¥${profit.amount.toFixed(2)}`}
